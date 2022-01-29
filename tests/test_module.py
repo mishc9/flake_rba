@@ -106,11 +106,10 @@ def test_access_local_variable():
     def foo():
         value = 1
         return value
-        
     print(value)
     """)
     actual = get_errors(code)
-    expected = {'6:6 RBA101'}
+    expected = {'5:6 RBA101'}
     assert actual == expected
 
 
