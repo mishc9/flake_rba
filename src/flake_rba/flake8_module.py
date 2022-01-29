@@ -2,12 +2,12 @@ import ast
 from typing import NamedTuple, Iterator, List, Any, Union
 
 
-class Frame(list):
+class Frame(list):  # type: ignore
     pass
 
 
 class ReferencedBeforeAssignmentNodeVisitor(ast.NodeVisitor):
-    default_names = list(__builtins__.keys())
+    default_names = list(__builtins__.keys())  # type: ignore
 
     def __init__(self):
         super().__init__()
@@ -16,7 +16,7 @@ class ReferencedBeforeAssignmentNodeVisitor(ast.NodeVisitor):
 
     def visit_Assign(self, node: ast.Assign) -> Any:
         targets = node.targets
-        self.stack[-1].append(targets[0].id)
+        self.stack[-1].append(targets[0].id)  # type: ignore
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> Any:
         self.stack[-1].append(node.name)
@@ -32,7 +32,7 @@ class ReferencedBeforeAssignmentNodeVisitor(ast.NodeVisitor):
         frame = Frame()
         self.stack.append(frame)
         try:
-            frame.append(node.target.id)
+            frame.append(node.target.id)  # type: ignore
             for field, value in ast.iter_fields(node):
                 if isinstance(value, list):
                     for item in value:
@@ -107,7 +107,8 @@ class ReferencedBeforeAssignmentNodeVisitor(ast.NodeVisitor):
 
     def visit_Call(self, node: ast.Call) -> Any:
         if hasattr(node, 'id') and not (
-                node.id in self.default_names or self._check_stack(node.id)):
+                node.id in self.default_names  # type: ignore
+                or self._check_stack(node.id)):  # type: ignore
             self.errors.append(
                 Flake8ASTErrorInfo(
                     node.lineno,
