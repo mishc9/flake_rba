@@ -14,14 +14,49 @@ class ReferencedBeforeAssignmentNodeVisitor(ast.NodeVisitor):
         self.stack: List[Frame] = []
         self.errors = []
 
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> Any:
+        assign_target = node.target
+        # Todo: add check for imports of non-annotated things
+        self._visit_assign_target(assign_target, node)
+
     def visit_Assign(self, node: ast.Assign) -> Any:
-        targets = node.targets
-        self.stack[-1].append(targets[0].id)  # type: ignore
+        # Todo: check multiple targets
+        assign_target = node.targets[0]
+        self._visit_assign_target(assign_target, node)
+
+    def _visit_assign_target(self, assign_target, node=None):
+        # Todo: properly check these types below
+        # Todo: add assignSub/assignAdd etc. operations
+        if isinstance(assign_target, ast.Name):
+            self.stack[-1].append(assign_target.id)
+        elif isinstance(assign_target, ast.Tuple):
+            for element in assign_target.elts:
+                self._visit_assign_target(element, node)
+        elif isinstance(assign_target, ast.Attribute):
+            pass
+        elif isinstance(assign_target, ast.Subscript):
+            pass
+        elif isinstance(assign_target, ast.List):
+            for element in assign_target.elts:
+                self._visit_assign_target(element, node)
+        elif isinstance(assign_target, (ast.Dict, ast.Set)):
+            pass
+        elif isinstance(assign_target, ast.Starred):
+            # Todo: add starred checks
+            pass
+        else:
+            try:
+                self.stack[-1].append(assign_target.id)  # type: ignore
+            except AttributeError as e:
+                if node is not None:
+                    print(e, node.lineno, node.col_offset)
 
     def visit_If(self, node: ast.If) -> Any:
+        # Todo: add values from the lower level to the track
         self._visit_if(node)
 
     def _visit_if(self, node: ast.If):
+        # Todo: merge if/else and try-except clause checks
         track = set()
         first_try = True
         has_else = False
@@ -53,6 +88,40 @@ class ReferencedBeforeAssignmentNodeVisitor(ast.NodeVisitor):
             for variable in track:
                 self.stack[-1].append(variable)
 
+    def visit_Try(self, node: ast.Try) -> Any:
+        # Todo: add values from the lower level to the track
+        first_try = True
+        track = set()
+
+        self.stack.append(Frame())
+        for expr in node.body:
+            self.visit(expr)
+        self._track(track, first_try)
+        self.stack.pop()
+        first_try = False
+
+        for handler in node.handlers:
+            self.stack.append(Frame())
+            if handler.name is not None:
+                self.stack[-1].append(handler.name)
+            self.visit(handler)
+            self._track(track, first_try)
+            self.stack.pop()
+
+        if node.orelse:
+            self.stack.append(Frame())
+            for expr in node.orelse:
+                self.visit(expr)
+            self._track(track, first_try)
+            self.stack.pop()
+
+        for variable in track:
+            self.stack[-1].append(variable)
+
+        if node.finalbody:
+            for expr in node.finalbody:
+                self.visit(expr)
+
     def _track(self, track, first_try):
         if first_try:
             for variable in self.stack[-1]:
@@ -67,11 +136,19 @@ class ReferencedBeforeAssignmentNodeVisitor(ast.NodeVisitor):
                 track.remove(frame)
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> Any:
+        # Todo: track kwargs, *args and **kwargs
         self.stack[-1].append(node.name)
         try:
             self.stack.append(Frame())
             for arg in node.args.args:
                 self.stack[-1].append(arg.arg)
+            if node.args.vararg is not None:
+                self.stack[-1].append(node.args.vararg.arg)
+            if node.args.kwarg is not None:
+                self.stack[-1].append(node.args.kwarg.arg)
+            if node.args.kwonlyargs is not None:
+                self.stack[-1].extend([arg.arg for arg in node.args.kwonlyargs])
+
             self.generic_visit(node)
         finally:
             self.stack.pop()
@@ -80,7 +157,8 @@ class ReferencedBeforeAssignmentNodeVisitor(ast.NodeVisitor):
         frame = Frame()
         self.stack.append(frame)
         try:
-            frame.append(node.target.id)  # type: ignore
+            # frame.append(node.target.id)  # type: ignore
+            self._visit_assign_target(node.target)
             for field, value in ast.iter_fields(node):
                 if isinstance(value, list):
                     for item in value:
@@ -88,6 +166,8 @@ class ReferencedBeforeAssignmentNodeVisitor(ast.NodeVisitor):
                             self.visit(item)
                 elif isinstance(value, ast.AST):
                     self.visit(value)
+        except AttributeError:
+            print("Can't check For", node.lineno, node.col_offset)
         finally:
             self.stack.pop()
 
@@ -137,6 +217,7 @@ class ReferencedBeforeAssignmentNodeVisitor(ast.NodeVisitor):
 
     def visit_ClassDef(self, node: ast.ClassDef) -> Any:
         # Todo: add metaclass/superclass/etc analysis.
+        self.stack[-1].append(node.name)
         for field, value in ast.iter_fields(node):
             if isinstance(value, list):
                 for item in value:
@@ -152,23 +233,26 @@ class ReferencedBeforeAssignmentNodeVisitor(ast.NodeVisitor):
         return visitor(node)
 
     def visit_Name(self, node: ast.Name) -> Any:
-        if hasattr(node, 'id') and not (
-                node.id in self.default_names or self._check_stack(node.id)):
-            self.errors.append(
-                Flake8ASTErrorInfo(
-                    node.lineno,
-                    node.col_offset,
-                    self.msg,
-                    type(node)
+        self._visit_names(node)
+
+    def visit_Tuple(self, node: ast.Tuple) -> Any:
+        self._visit_names(node)
+
+    def _visit_names(self, node: Union[ast.Name, ast.Tuple]):
+        if isinstance(node, ast.Name):
+            if hasattr(node, 'id') and not (
+                    node.id in self.default_names or self._check_stack(node.id)):
+                self.errors.append(
+                    Flake8ASTErrorInfo(
+                        node.lineno,
+                        node.col_offset,
+                        self.msg,
+                        type(node)
+                    )
                 )
-            )
-        for field, value in ast.iter_fields(node):
-            if isinstance(value, list):
-                for item in value:
-                    if isinstance(item, ast.AST):
-                        self.visit(item)
-            elif isinstance(value, ast.AST):
-                self.visit(value)
+        elif isinstance(node, ast.Tuple):
+            for element in node.elts:
+                self._visit_names(element)
 
     def visit_Call(self, node: ast.Call) -> Any:
         if hasattr(node, 'id') and not (
@@ -196,6 +280,63 @@ class ReferencedBeforeAssignmentNodeVisitor(ast.NodeVisitor):
                 if entry == name:
                     return True
         return False
+
+    def visit_ListComp(self, node: ast.ListComp) -> Any:
+        self.stack.append(Frame())
+        for generator in node.generators:
+            self._visit_assign_target(generator.target)
+        self._visit_names(node.elt)  # Todo: what's the problem?
+        self.stack.pop()
+
+    def visit_DictComp(self, node: ast.DictComp) -> Any:
+        self.stack.append(Frame())
+        for generator in node.generators:
+            self._visit_assign_target(generator.target)
+        self._visit_names(node.key)  # Todo: what's the problem?
+        self._visit_names(node.value)  # Todo: what's the problem?
+        self.stack.pop()
+
+    def visit_SetComp(self, node: ast.SetComp) -> Any:
+        self.stack.append(Frame())
+        for generator in node.generators:
+            self._visit_assign_target(generator.target)
+        self._visit_names(node.elt)  # Todo: what's the problem?
+        self.stack.pop()
+
+    def visit_GeneratorExp(self, node: ast.GeneratorExp) -> Any:
+        self.stack.append(Frame())
+        for generator in node.generators:
+            self._visit_assign_target(generator.target)
+        self._visit_names(node.elt)  # Todo: what's the problem?
+        self.stack.pop()
+
+    def visit_With(self, node: ast.With) -> Any:
+        self.stack.append(Frame())
+        for withitem in node.items:
+            if isinstance(withitem, ast.withitem) and withitem.optional_vars is not None:
+                self._visit_assign_target(withitem.optional_vars)
+        # Frame for variables defined within 'with' scope.
+        self.stack.append(Frame())
+        for expr in node.body:
+            self.visit(expr)
+        # Pop variables to save them in the higher-level frame
+        defined_within_with = self.stack.pop()
+        self.stack.pop()
+        for val in defined_within_with:
+            self.stack[-1].append(val)
+
+    def visit_Lambda(self, node: ast.Lambda) -> Any:
+        try:
+            self.stack.append(Frame())
+            for arg in node.args.args:
+                self.stack[-1].append(arg.arg)
+            if node.args.vararg is not None:
+                self.stack[-1].append(node.args.vararg.arg)
+            if node.args.kwarg is not None:
+                self.stack[-1].append(node.args.kwarg.arg)
+            self.visit(node.body)
+        finally:
+            self.stack.pop()
 
     @property
     def msg(self):
