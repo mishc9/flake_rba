@@ -1,5 +1,5 @@
 import ast
-from typing import NamedTuple, Iterator, List, Any, Union
+from typing import NamedTuple, Iterator, List, Any, Union, Set
 
 
 class Frame(list):  # type: ignore
@@ -57,7 +57,7 @@ class ReferencedBeforeAssignmentNodeVisitor(ast.NodeVisitor):
 
     def visit_If(self, node: ast.If) -> Any:
         # Todo: merge if/else and try-except clause checks
-        track = set()
+        track: Set[str] = set()
         self.tracking_stack.append(track)
 
         first_try = True
@@ -111,7 +111,7 @@ class ReferencedBeforeAssignmentNodeVisitor(ast.NodeVisitor):
     def visit_Try(self, node: ast.Try) -> Any:
         # Todo: add values from the lower level to the track
         first_try = True
-        track = set()
+        track: Set[str] = set()
 
         self.stack.append(Frame())
         for expr in node.body:
@@ -320,7 +320,7 @@ class ReferencedBeforeAssignmentNodeVisitor(ast.NodeVisitor):
                 Flake8ASTErrorInfo(
                     node.lineno,
                     node.col_offset,
-                    self.msg % str(node.id),
+                    self.msg % str(node.id),  # type: ignore
                     type(node)
                 )
             )

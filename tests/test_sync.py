@@ -207,12 +207,12 @@ def test_class_with_two_methods_normal():
     code = textwrap.dedent("""
     class Foo:
         class_att = 1
-        
+
         def bar(self, inp):
             if inp:
                 return 1
             self.foo(inp)
-            
+
         def foo(self, inp):
             if not inp:
                 return 0
@@ -725,7 +725,7 @@ def test_static_class_reference_wrong():
         @staticmethod
         def bar():
             Baz.baz()
-        
+
         @staticmethod
         def baz():
             print("spam")
@@ -809,7 +809,7 @@ def test_if_else_return_ok():
         if value > 0:
             a = 1
         elif value < 0:
-            a = 2 
+            a = 2
         else:
             return -1
         return a
@@ -825,7 +825,7 @@ def test_if_else_raise_ok():
         if value > 0:
             a = 1
         elif value < 0:
-            a = 2 
+            a = 2
         else:
             raise ValueError
         return a
@@ -841,7 +841,7 @@ def test_if_else_return_failed():
         if value > 0:
             a = 1
         elif value < 0:
-            a = 2 
+            a = 2
             return - 1
         else:
             b = 2
@@ -940,12 +940,12 @@ def test_fn_type_annotated_parameters_args_syntax():
 def test_fn_cross_reference():
     code = textwrap.dedent("""
     a = 1
-    
+
     def foo():
         print("foo")
         bar()
-        
-        
+
+
     def bar():
         print("bar")
         foo()
