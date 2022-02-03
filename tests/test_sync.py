@@ -852,6 +852,34 @@ def test_if_else_return_failed():
     assert actual == expected
 
 
+def test_try_except_return():
+    code = textwrap.dedent("""
+    def fn(value):
+        try:
+            a = 1
+        except Exception as e:
+            return -1
+        return a
+    """)
+    actual = get_errors(code)
+    expected = set()
+    assert actual == expected
+
+
+def test_try_except_re_raise():
+    code = textwrap.dedent("""
+    def fn(value):
+        try:
+            a = 1
+        except Exception as e:
+            raise e
+        return a
+    """)
+    actual = get_errors(code)
+    expected = set()
+    assert actual == expected
+
+
 def test_lambda():
     code = textwrap.dedent("""
     (lambda x: print(x))()
@@ -903,6 +931,24 @@ def test_fn_type_annotated_parameters_args_syntax():
     code = textwrap.dedent("""
     def fn(y: int, *args, x: str = 1):
         print(x, y)
+    """)
+    actual = get_errors(code)
+    expected = set()
+    assert actual == expected
+
+
+def test_fn_cross_reference():
+    code = textwrap.dedent("""
+    a = 1
+    
+    def foo():
+        print("foo")
+        bar()
+        
+        
+    def bar():
+        print("bar")
+        foo()
     """)
     actual = get_errors(code)
     expected = set()

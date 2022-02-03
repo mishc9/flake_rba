@@ -2,6 +2,14 @@
 
 -- WIP --
 
+* Only `Python3.6` features are supported
+* Tricky control flow cases like multiple embedded `if/else`, `try/except` and 
+embedded `for` loops sometimes go wrong
+* Async support has not been added yet
+* Could have caught some True positives missed by PyCharm static checker
+* Yet no support for `nonlocal` and `global` keywords (should they be 
+  forever banned?)
+
 To the best of my knowledge, flake8/pylint/pyflakes are still lacking reliable 
 detection of 'referenced-before-assignment'.
 
