@@ -221,6 +221,24 @@ class ReferencedBeforeAssignmentNodeVisitor(ast.NodeVisitor):
         finally:
             self.stack.pop()
 
+    def visit_AsyncFor(self, node:  ast.AsyncFor) -> Any:
+        frame = Frame()
+        self.stack.append(frame)
+        try:
+            # frame.append(node.target.id)  # type: ignore
+            self._visit_assign_target(node.target)
+            for field, value in ast.iter_fields(node):
+                if isinstance(value, list):
+                    for item in value:
+                        if isinstance(item, ast.AST):
+                            self.visit(item)
+                elif isinstance(value, ast.AST):
+                    self.visit(value)
+        except AttributeError:
+            print("Can't check For", node.lineno, node.col_offset)
+        finally:
+            self.stack.pop()
+
     def visit_IfExp(self, node: ast.IfExp) -> Any:
         for field, value in ast.iter_fields(node):
             if isinstance(value, list):
@@ -320,7 +338,7 @@ class ReferencedBeforeAssignmentNodeVisitor(ast.NodeVisitor):
                 Flake8ASTErrorInfo(
                     node.lineno,
                     node.col_offset,
-                    self.msg % str(node.id),  # type: ignore
+                    self.msg % str(node.id),  # type:
                     type(node)
                 )
             )
@@ -370,6 +388,21 @@ class ReferencedBeforeAssignmentNodeVisitor(ast.NodeVisitor):
         self.stack.pop()
 
     def visit_With(self, node: ast.With) -> Any:
+        self.stack.append(Frame())
+        for withitem in node.items:
+            if isinstance(withitem, ast.withitem) and withitem.optional_vars is not None:
+                self._visit_assign_target(withitem.optional_vars)
+        # Frame for variables defined within 'with' scope.
+        self.stack.append(Frame())
+        for expr in node.body:
+            self.visit(expr)  # type: ignore
+        # Pop variables to save them in the higher-level frame
+        defined_within_with = self.stack.pop()
+        self.stack.pop()
+        for val in defined_within_with:
+            self.stack[-1].append(val)
+
+    def visit_AsyncWith(self, node: ast.AsyncWith) -> Any:
         self.stack.append(Frame())
         for withitem in node.items:
             if isinstance(withitem, ast.withitem) and withitem.optional_vars is not None:

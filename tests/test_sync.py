@@ -953,3 +953,34 @@ def test_fn_cross_reference():
     actual = get_errors(code)
     expected = set()
     assert actual == expected
+
+
+def test_if_embedded_ok():
+    code = textwrap.dedent("""
+    def fn(a, b):
+        if a:
+            x = 'foo'
+        else:
+            if b:
+                print('spam')
+            x = 'bar'
+        return x
+    """)
+    actual = get_errors(code)
+    expected = set()
+    assert actual == expected
+
+
+def test_if_elif_fail():
+    code = textwrap.dedent("""
+    def fn(a, b):
+        if a:
+            x = 'foo'
+        elif b:
+            print('spam')
+            x = 'bar'
+        return x
+    """)
+    actual = get_errors(code)
+    expected = {'8:11 F823'}
+    assert actual == expected
