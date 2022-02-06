@@ -1,5 +1,5 @@
 import ast
-from typing import NamedTuple, Iterator, List, Any, Union, Set
+from typing import NamedTuple, Iterator, List, Any, Union
 
 
 class Frame(list):  # type: ignore
@@ -57,101 +57,158 @@ class ReferencedBeforeAssignmentNodeVisitor(ast.NodeVisitor):
 
     def visit_If(self, node: ast.If) -> Any:
         # Todo: merge if/else and try-except clause checks
-        track: Set[str] = set()
-        self.tracking_stack.append(track)
+        self._visit_if_helper(node)
 
-        first_try = True
-        has_else = False
+    def _visit_if_helper(self, node: ast.If) -> Any:
+        self.stack.append(Frame())
+        self.visit(node.test)  # type: ignore
 
-        while True:
-            self.stack.append(Frame())
-            self.generic_visit(node.test)  # type: ignore
-            for expr in node.body:
+        abort_if_branch = False
+        dead_branch = False
+        for expr in node.body:
+            if isinstance(expr, (ast.Return, ast.Raise, ast.Continue, ast.Break)):
+                abort_if_branch = True
                 self.visit(expr)  # type: ignore
-
-            hit_return = False
-            for expr in node.body:
-                if isinstance(expr, (ast.Return, ast.Raise)):
-                    hit_return = True
-                    break
-            if not hit_return:
-                self._track(track, first_try)
-
-            self.stack.pop()
-
-            if node.orelse:
-                if isinstance(node.orelse[0], ast.If):
-                    node = node.orelse[0]
-                else:
-                    self.stack.append(Frame())
-                    for expr in node.orelse:
-                        self.visit(expr)  # type: ignore
-
-                    hit_return = False
-                    for expr in node.orelse:
-                        if isinstance(expr, (ast.Return, ast.Raise)):
-                            hit_return = True
-                            break
-                    if not hit_return:
-                        self._track(track, False)
-
-                    self.stack.pop()
-                    has_else = True
-                    break
-            else:
                 break
-            first_try = False
+            if isinstance(expr, ast.If):
+                dead_branch = self._visit_if_helper(expr)
+            else:
+                self.visit(expr)  # type: ignore
+            if dead_branch:
+                abort_if_branch = True
+                break
 
-        if has_else:
-            for variable in track:
-                self.stack[-1].append(variable)
+        frame_state = {name for name in self.stack[-1]}
+        self.stack[-1].clear()
 
-        self.tracking_stack.pop()
+        abort_else_branch = False
+        dead_branch = False
+        for expr in node.orelse:
+            if isinstance(expr, (ast.Return, ast.Raise, ast.Continue, ast.Break)):
+                self.visit(expr)  # type: ignore
+                abort_else_branch = True
+                break
+            if isinstance(expr, ast.If):
+                dead_branch = self._visit_if_helper(expr)
+            else:
+                self.visit(expr)  # type: ignore
+            if dead_branch:
+                abort_else_branch = True
+                break
+
+        orelse_frame_state = {name for name in self.stack[-1]}
+        self.stack[-1].clear()
+
+        dead_end_branch = False
+        if not abort_else_branch and not abort_if_branch:
+            intersection = frame_state.intersection(orelse_frame_state)
+        elif abort_if_branch and not abort_else_branch:
+            intersection = orelse_frame_state
+        elif not abort_if_branch and abort_else_branch:
+            intersection = frame_state
+        else:
+            intersection = set()
+            dead_end_branch = True
+
+        self.stack.pop()
+        for name in intersection:
+            self.stack[-1].append(name)
+        return dead_end_branch
 
     def visit_Try(self, node: ast.Try) -> Any:
-        # Todo: add values from the lower level to the track
-        first_try = True
-        track: Set[str] = set()
+        self._visit_try_helper(node)
 
+    def _visit_try_helper(self, node: ast.Try) -> Any:
         self.stack.append(Frame())
+
+        scopes = []
+        abort_try_branch = False
+        dead_end = False
         for expr in node.body:
-            self.visit(expr)  # type: ignore
-        self._track(track, first_try)
-        self.stack.pop()
-        first_try = False
+            if isinstance(expr, (ast.Return, ast.Raise, ast.Continue, ast.Break)):
+                abort_try_branch = True
+                self.visit(expr)  # type: ignore
+                break
+            if isinstance(expr, ast.Try):
+                dead_end = self._visit_try_helper(expr)  # type: ignore
+            if isinstance(expr, ast.If):
+                dead_end = self._visit_if_helper(expr)  # type: ignore
+            else:
+                self.visit(expr)  # type: ignore
+
+        if not abort_try_branch and not dead_end:
+            frame_state = {name for name in self.stack[-1]}
+            scopes.append(frame_state)
+        self.stack[-1].clear()
 
         for handler in node.handlers:
-            self.stack.append(Frame())
+            abort_handler_branch = False
+
             if handler.name is not None:
                 self.stack[-1].append(handler.name)
-            # Todo: redundant check - bad control flow.
-            hit_return = False
+
+            dead_end = False
             for expr in handler.body:
-                if isinstance(expr, (ast.Return, ast.Raise)):
-                    hit_return = True
+                if isinstance(expr, (ast.Return, ast.Raise, ast.Continue, ast.Break)):
+                    abort_handler_branch = True
+                    self.visit(expr)  # type: ignore
                     break
-            self.visit(handler)  # type: ignore
-            if not hit_return:
-                self._track(track, first_try)
-            self.stack.pop()
+                if isinstance(expr, ast.Try):
+                    dead_end = self._visit_try_helper(expr)  # type: ignore
+                if isinstance(expr, ast.If):
+                    dead_end = self._visit_if_helper(expr)  # type: ignore
+                else:
+                    self.visit(expr)  # type: ignore
 
-        if node.orelse:
-            self.stack.append(Frame())
-            hit_return = False
-            for expr in node.orelse:
+            if not abort_handler_branch and not dead_end:
+                handler_frame_state = {name for name in self.stack[-1]}
+                scopes.append(handler_frame_state)
+            self.stack[-1].clear()
+
+        dead_end = False
+        abort_else_branch = False
+        for expr in node.orelse:
+            if isinstance(expr, (ast.Return, ast.Raise, ast.Continue, ast.Break)):
                 self.visit(expr)  # type: ignore
-                if isinstance(expr, (ast.Return, ast.Raise)):
-                    hit_return = True
-            if not hit_return:
-                self._track(track, first_try)
-            self.stack.pop()
-
-        for variable in track:
-            self.stack[-1].append(variable)
-
-        if node.finalbody:
-            for expr in node.finalbody:
+                abort_else_branch = True
+                break
+            if isinstance(expr, ast.Try):
+                dead_end = self._visit_try_helper(expr)  # type: ignore
+            if isinstance(expr, ast.If):
+                dead_end = self._visit_if_helper(expr)
+            else:
                 self.visit(expr)  # type: ignore
+
+        if not abort_else_branch and node.orelse and not dead_end:
+            orelse_frame_state = {name for name in self.stack[-1]}
+            scopes.append(orelse_frame_state)
+        self.stack[-1].clear()
+
+        for expr in node.finalbody:
+            if isinstance(expr, (ast.Return, ast.Raise, ast.Continue, ast.Break)):
+                self.visit(expr)  # type: ignore
+                break
+            if isinstance(expr, ast.If):
+                self._visit_if_helper(expr)
+            else:
+                self.visit(expr)  # type: ignore
+
+        self.stack.pop()
+        intersection = None
+        for scope in scopes:
+            if intersection is None:
+                intersection = scope
+                continue
+            intersection = intersection.intersection(scope)
+        if intersection is None:
+            intersection = set()
+
+        for name in intersection:
+            self.stack[-1].append(name)
+
+        if not scopes:
+            return True
+        return False
 
     def _track(self, track, first_try):
         if first_try:
@@ -221,7 +278,7 @@ class ReferencedBeforeAssignmentNodeVisitor(ast.NodeVisitor):
         finally:
             self.stack.pop()
 
-    def visit_AsyncFor(self, node:  ast.AsyncFor) -> Any:
+    def visit_AsyncFor(self, node: ast.AsyncFor) -> Any:
         frame = Frame()
         self.stack.append(frame)
         try:

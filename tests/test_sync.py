@@ -1,6 +1,8 @@
 import ast
 import textwrap
 
+import pytest
+
 from flake_rba.plugin import ReferencedBeforeAssignmentASTPlugin
 
 
@@ -494,6 +496,8 @@ def test_embedded_try_except():
         print(e)
     value += 1
     """)
+    # import astpretty
+    # astpretty.pprint(ast.parse(code))
     actual = get_errors(code)
     expected = {"13:0 F823"}
     assert actual == expected
@@ -507,11 +511,11 @@ def test_try_except_finally_ok():
     except Exception as e:
         print(e)
     finally:
-        value = 3
+        print("free resources")
     print(value)
     """)
     actual = get_errors(code)
-    expected = set()
+    expected = {'9:6 F823'}
     assert actual == expected
 
 
@@ -524,7 +528,7 @@ def test_try_except_else_ok():
         print(e)
         value = 2
     finally:
-        value = 3
+        print('free resources')
     print(value)
     """)
     actual = get_errors(code)
@@ -983,4 +987,170 @@ def test_if_elif_fail():
     """)
     actual = get_errors(code)
     expected = {'8:11 F823'}
+    assert actual == expected
+
+
+def test_if_elif_else_ok():
+    code = textwrap.dedent("""
+    def fn(a, b):
+        if a:
+            x = 'foo'
+        elif b:
+            x = 'bar'
+        else:
+            x = 'spam'
+        return x
+    """)
+    actual = get_errors(code)
+    expected = set()
+    assert actual == expected
+
+
+def test_if_else_embedded_return_undefined():
+    code = textwrap.dedent("""
+    def fn(a, b):
+        if a == 1:
+            x = 'foo'
+        elif a == 2:
+            if b:
+                x = 'bar'
+            else:
+                return x
+        else:
+            x = 'spam'
+        return x
+    """)
+    actual = get_errors(code)
+    expected = {'9:19 F823'}
+    assert actual == expected
+
+
+def test_if_else_continue_undefined():
+    code = textwrap.dedent("""
+    def fn(a, b):
+        if a == 1:
+            x = 'foo'
+        elif a == 2:
+            if b:
+                x = 'bar'
+            else:
+                return x
+        else:
+            x = 'spam'
+        return x
+    """)
+    actual = get_errors(code)
+    expected = {'9:19 F823'}
+    assert actual == expected
+
+
+def test_if_else_continue_ok():
+    code = textwrap.dedent("""
+    for value in [1, 2, 3]:
+        if value == 1:
+            x = '1'
+        elif value == 2:
+            break
+        else:
+            x = '3'
+        print(x)
+    print(x)
+    """)
+    actual = get_errors(code)
+    expected = {'10:6 F823'}
+    assert actual == expected
+
+
+def test_if_else_break_ok():
+    code = textwrap.dedent("""
+    for value in [1, 2, 3]:
+        if value == 1:
+            x = '1'
+        elif value == 2:
+            continue
+        else:
+            x = '3'
+        print(x)
+    print(x)
+    """)
+    actual = get_errors(code)
+    expected = {'10:6 F823'}
+    assert actual == expected
+
+
+def test_if_else_try_except_continue_ok():
+    code = textwrap.dedent("""
+    for value in [1, 2, 3]:
+        if value == 1:
+            try:
+                x = 1
+            except ValueError:
+                continue
+        elif value == 2:
+            continue
+        else:
+            x = '3'
+        print(x)
+    print(x)
+    """)
+    actual = get_errors(code)
+    expected = {'13:6 F823'}
+    assert actual == expected
+
+
+def test_if_else_try_except_break_ok():
+    code = textwrap.dedent("""
+    for value in [1, 2, 3]:
+        if value == 1:
+            try:
+                x = 1
+            except ValueError:
+                break
+        elif value == 2:
+            continue
+        else:
+            x = '3'
+        print(x)
+    print(x)
+    """)
+    actual = get_errors(code)
+    expected = {'13:6 F823'}
+    assert actual == expected
+
+
+def test_if_else_try_except_complicated_ok():
+    code = textwrap.dedent("""
+    for value in [1, 2, 3]:
+        if value == 1:
+            try:
+                print('spam')
+                x = 1
+            except ValueError:
+                if value:
+                    raise
+                else:
+                    continue
+            print(x)
+    print(x)
+    """)
+    actual = get_errors(code)
+    expected = {'13:6 F823'}
+    assert actual == expected
+
+
+def test_if_else_embedded_complicated_ok():
+    code = textwrap.dedent("""
+    for value in [1, 2, 3]:
+        if value == 1:
+            x = 2 
+        else:
+            if value:
+                raise
+            else:
+                continue
+        print(x)
+    print(x)
+    """)
+    actual = get_errors(code)
+    expected = {'11:6 F823'}
     assert actual == expected
