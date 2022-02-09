@@ -7,7 +7,8 @@ class Frame(list):  # type: ignore
 
 
 class ReferencedBeforeAssignmentNodeVisitor(ast.NodeVisitor):
-    default_names = list(__builtins__.keys())  # type: ignore
+    # Assuming here that we always check a source code in files, and __file__ is defined.
+    default_names = list(__builtins__.keys()) + ['__file__'] # type: ignore
 
     def __init__(self):
         super().__init__()
@@ -22,28 +23,36 @@ class ReferencedBeforeAssignmentNodeVisitor(ast.NodeVisitor):
     def visit_AnnAssign(self, node: ast.AnnAssign) -> Any:
         assign_target = node.target
         # Todo: add check for imports of non-annotated things
-        self._visit_assign_target(assign_target, node)
+        self._visit_assign_target(assign_target)
 
     def visit_Assign(self, node: ast.Assign) -> Any:
         # Todo: check multiple targets
-        assign_target = node.targets[0]
-        self._visit_assign_target(assign_target, node)
+        self._visit_values(node.value)
+        for assign_target in node.targets:
+            self._visit_assign_target(assign_target)
 
-    def _visit_assign_target(self, assign_target, node=None):
+    def _visit_values(self, value_target):
+        if isinstance(value_target, list):
+            for sub_node in value_target:
+                self.visit(sub_node)
+        else:
+            self.visit(value_target)
+
+    def _visit_assign_target(self, assign_target):
         # Todo: properly check these types below
         # Todo: add assignSub/assignAdd etc. operations
         if isinstance(assign_target, ast.Name):
             self.stack[-1].append(assign_target.id)
         elif isinstance(assign_target, ast.Tuple):
             for element in assign_target.elts:
-                self._visit_assign_target(element, node)
+                self._visit_assign_target(element)
         elif isinstance(assign_target, ast.Attribute):
             pass
         elif isinstance(assign_target, ast.Subscript):
             pass
         elif isinstance(assign_target, ast.List):
             for element in assign_target.elts:
-                self._visit_assign_target(element, node)
+                self._visit_assign_target(element)
         elif isinstance(assign_target, (ast.Dict, ast.Set)):
             pass
         elif isinstance(assign_target, ast.Starred):

@@ -1,8 +1,6 @@
 import ast
 import textwrap
 
-import pytest
-
 from flake_rba.plugin import ReferencedBeforeAssignmentASTPlugin
 
 
@@ -1153,4 +1151,164 @@ def test_if_else_embedded_complicated_ok():
     """)
     actual = get_errors(code)
     expected = {'11:6 F823'}
+    assert actual == expected
+
+
+def test_multiple_assignment():
+    code = textwrap.dedent("""
+    x = y = 1    
+    print(x)
+    print(y)
+    """)
+    actual = get_errors(code)
+    expected = set()
+    assert actual == expected
+
+
+def test_try_reassign_not_assigned():
+    code = textwrap.dedent("""
+    for v in [1, 2, 3]:
+        x = v
+    y = x
+    """)
+    actual = get_errors(code)
+    expected = {'4:4 F823'}
+    assert actual == expected
+
+
+def test_try_use_not_assigned_as_argument_with_attr():
+    code = textwrap.dedent("""
+    for v in [1, 2, 3]:
+        x = v
+    print(x.__class__)
+    """)
+    actual = get_errors(code)
+    expected = {'4:6 F823'}
+    assert actual == expected
+
+
+def test_try_use_not_assigned_as_argument_with_attr_and_assign():
+    code = textwrap.dedent("""
+    def fn(x):
+        return x 
+        
+    for v in [1, 2, 3]:
+        x = v
+    x_s = fn(x.__class__)
+    """)
+    actual = get_errors(code)
+    expected = {'7:9 F823'}
+    assert actual == expected
+
+
+def test_try_use_not_assigned_as_argument_multiple_values():
+    code = textwrap.dedent("""
+    for v in [1, 2, 3]:
+        x = v
+    a, b = 0, x
+    """)
+    actual = get_errors(code)
+    expected = {'4:10 F823'}
+    assert actual == expected
+
+
+def test_assign_builtin_file():
+    code = textwrap.dedent("""
+    x = __file__
+    """)
+    actual = get_errors(code)
+    expected = set()
+    assert actual == expected
+
+
+def test_straightforward():
+    # For some reason, PyCharm syntax checker considers this code sample ok, but it
+    #  fails and should be marked as referenced-before-assignment. Looks like there's
+    #  something wrong with 'with' clause and PyCharm - I found a few more examples.
+    code = textwrap.dedent("""
+    import contextlib
+    reward = None
+    distance_op = 'wrong_value'
+    node = 'SPAM'
+    leaves = 'foo'
+    distance = 0
+    with contextlib.suppress():
+        if reward is not None:
+            if distance_op == 'mul':
+                metric = distance * reward[leaves]
+            elif distance_op == 'add':
+                metric = (distance + reward[leaves]) * (distance > 0)
+            else:
+                raise ValueError('unsupported distance_op {}'.format(distance_op))
+        if sum(metric) == 0:
+            print(node)
+    """)
+    actual = get_errors(code)
+    expected = {'16:11 F823'}  # metric variable
+    assert actual == expected
+
+
+def test_in_with_values_pycharm_wrong():
+    # PyCharm can't detect that x is referenced before assignment within with context.
+    code = textwrap.dedent("""
+    import contextlib
+    a, b = 1, 0
+    c = True
+    with contextlib.suppress():
+        if a < b:
+            x = 1
+        if c:
+            print(x)
+    """)
+    actual = get_errors(code)
+    expected = {'9:14 F823'}  # metric variable
+    assert actual == expected
+
+
+def test_if_out_of_with_pycharm_wrong():
+    # This is the same as above, but without with. PyCharm is able to detect this.
+    code = textwrap.dedent("""
+    a, b = 1, 0
+    c = True
+    if a < b:
+        x = 1
+    if c:
+        print(x)
+    # """)
+    actual = get_errors(code)
+    expected = {'7:10 F823'}  # metric variable
+    assert actual == expected
+
+def test_delete_unassigned_values():
+    code = textwrap.dedent("""
+    for v in [1, 2, 3]:
+        x = v
+    del x, v
+    """)
+    actual = get_errors(code)
+    expected = {'4:4 F823', '4:7 F823'}
+    assert actual == expected
+
+
+def test_delete_assigned_values():
+    code = textwrap.dedent("""
+    x, v = 0, 1
+    for v in [1, 2, 3]:
+        x = v
+    del x, v
+    """)
+    actual = get_errors(code)
+    expected = set()
+    assert actual == expected
+
+
+def test_variable_in_other_variable():
+    code = textwrap.dedent("""
+    d = {}
+    for v in [1, 2, 3]:
+        if v in d:
+            print('check')
+    """)
+    actual = get_errors(code)
+    expected = set()
     assert actual == expected
