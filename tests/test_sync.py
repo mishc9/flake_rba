@@ -1279,6 +1279,7 @@ def test_if_out_of_with_pycharm_wrong():
     expected = {'7:10 F823'}  # metric variable
     assert actual == expected
 
+
 def test_delete_unassigned_values():
     code = textwrap.dedent("""
     for v in [1, 2, 3]:
