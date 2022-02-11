@@ -1140,7 +1140,7 @@ def test_if_else_embedded_complicated_ok():
     code = textwrap.dedent("""
     for value in [1, 2, 3]:
         if value == 1:
-            x = 2 
+            x = 2
         else:
             if value:
                 raise
@@ -1156,7 +1156,7 @@ def test_if_else_embedded_complicated_ok():
 
 def test_multiple_assignment():
     code = textwrap.dedent("""
-    x = y = 1    
+    x = y = 1
     print(x)
     print(y)
     """)
@@ -1190,8 +1190,8 @@ def test_try_use_not_assigned_as_argument_with_attr():
 def test_try_use_not_assigned_as_argument_with_attr_and_assign():
     code = textwrap.dedent("""
     def fn(x):
-        return x 
-        
+        return x
+
     for v in [1, 2, 3]:
         x = v
     x_s = fn(x.__class__)

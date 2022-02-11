@@ -8,7 +8,7 @@ class Frame(list):  # type: ignore
 
 class ReferencedBeforeAssignmentNodeVisitor(ast.NodeVisitor):
     # Assuming here that we always check a source code in files, and __file__ is defined.
-    default_names = list(__builtins__.keys()) + ['__file__'] # type: ignore
+    default_names = list(__builtins__.keys()) + ['__file__', '__builtins__']  # type: ignore
 
     def __init__(self):
         super().__init__()
@@ -56,7 +56,6 @@ class ReferencedBeforeAssignmentNodeVisitor(ast.NodeVisitor):
         elif isinstance(assign_target, (ast.Dict, ast.Set)):
             pass
         elif isinstance(assign_target, ast.Starred):
-            # Todo: add starred checks
             pass
         else:
             pass
@@ -388,7 +387,7 @@ class ReferencedBeforeAssignmentNodeVisitor(ast.NodeVisitor):
                     Flake8ASTErrorInfo(
                         node.lineno,
                         node.col_offset,
-                        self.msg % str(node.id),
+                        self.msg % str(node.id),  # type: ignore
                         type(node)
                     )
                 )
@@ -404,7 +403,7 @@ class ReferencedBeforeAssignmentNodeVisitor(ast.NodeVisitor):
                 Flake8ASTErrorInfo(
                     node.lineno,
                     node.col_offset,
-                    self.msg % str(node.id),  # type:
+                    self.msg % str(node.id),  # type: ignore
                     type(node)
                 )
             )
