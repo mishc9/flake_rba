@@ -202,16 +202,16 @@ class ReferencedBeforeAssignmentNodeVisitor(ast.NodeVisitor):
                 self.visit(expr)  # type: ignore
 
         self.stack.pop()
-        intersection = None
+        scope_intersection = None
         for scope in scopes:
-            if intersection is None:
-                intersection = scope
+            if scope_intersection is None:
+                scope_intersection = scope
                 continue
-            intersection = intersection.intersection(scope)
-        if intersection is None:
-            intersection = set()
+            scope_intersection = scope_intersection.intersection(scope)  # type: ignore
+        if scope_intersection is None:
+            scope_intersection = set()
 
-        for name in intersection:
+        for name in scope_intersection:
             self.stack[-1].append(name)
 
         if not scopes:
